@@ -495,6 +495,10 @@ async def ping(ctx):
 async def hello_world(interaction: discord.Interaction):
     await interaction.response.send_message("Hello, world!")
 
+@bot.tree.command(name="praise", description="Good job cantina-chan!")
+async def praise(interaction: discord.Interaction):
+    await interaction.response.send_message("yayyy thank you >w< :3c")
+
 @bot.tree.command(name="meniu", description="Post today’s Gaudeamus menu")
 async def meniu(interaction: discord.Interaction):
     await interaction.response.defer()
