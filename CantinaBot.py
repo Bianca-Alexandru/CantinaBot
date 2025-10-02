@@ -53,33 +53,44 @@ class CantinaConfig:
     key: str
     display_name: str
     close_time: time
-    url_builder: Callable[[date], str]
+    url_builder: Callable[[date], Sequence[str]]
     auto_post: bool = False
 
 
-def build_gaudeamus_url(target_date: date) -> str:
+def build_gaudeamus_url(target_date: date) -> Sequence[str]:
     year = target_date.strftime("%Y")
     month = target_date.strftime("%m")
-    filename = f"GAU-{target_date.strftime('%d-%b-%Y').upper()}.pdf"
-    return f"{BASE_PDF_URL}/{year}/{month}/{filename}"
+    new_filename = f"Meniu-site-GAU-{target_date.strftime('%d.%m.%Y')}.pdf"
+    legacy_filename = f"GAU-{target_date.strftime('%d-%b-%Y').upper()}.pdf"
+    base_path = f"{BASE_PDF_URL}/{year}/{month}"
+    return (
+        f"{base_path}/{new_filename}",
+        f"{base_path}/{legacy_filename}",
+    )
 
 
-def build_titu_url(target_date: date) -> str:
+def build_titu_url(target_date: date) -> Sequence[str]:
     year = target_date.strftime("%Y")
     month = target_date.strftime("%m")
-    day_str = str(target_date.day)
     month_abbr = target_date.strftime("%b").upper()
-    filename = f"{day_str}-{month_abbr}-TM.pdf"
-    return f"{BASE_PDF_URL}/{year}/{month}/{filename}"
+    legacy_filename = f"{target_date.day}-{month_abbr}-TM.pdf"
+    base_path = f"{BASE_PDF_URL}/{year}/{month}"
+    return (
+        f"{base_path}/meniu.pdf",
+        f"{base_path}/{legacy_filename}",
+    )
 
 
-def build_akademos_url(target_date: date) -> str:
+def build_akademos_url(target_date: date) -> Sequence[str]:
     year = target_date.strftime("%Y")
     month = target_date.strftime("%m")
-    day_str = target_date.strftime("%d")
-    month_abbr = target_date.strftime("%b").upper()
-    filename = f"AK-{day_str}-{month_abbr}-.pdf"
-    return f"{BASE_PDF_URL}/{year}/{month}/{filename}"
+    new_filename = f"MENIU-AKADEMOS-{target_date.strftime('%d.%m.%Y')}.pdf"
+    legacy_filename = f"AK-{target_date.strftime('%d-%b-%Y').upper()}-.pdf"
+    base_path = f"{BASE_PDF_URL}/{year}/{month}"
+    return (
+        f"{base_path}/{new_filename}",
+        f"{base_path}/{legacy_filename}",
+    )
 
 
 CANTINAS = {
@@ -150,33 +161,48 @@ async def fetch_and_cache_pdf(
     if cached is not None:
         return cached, True
 
-    pdf_url = cantina.url_builder(target_date)
+    raw_candidates = cantina.url_builder(target_date)
+    if isinstance(raw_candidates, str):
+        pdf_urls = [raw_candidates]
+    else:
+        # Preserve order while removing duplicates and filtering out empty values
+        seen_urls = set()
+        pdf_urls = []
+        for candidate in raw_candidates:
+            if not candidate or candidate in seen_urls:
+                continue
+            pdf_urls.append(candidate)
+            seen_urls.add(candidate)
+
+    if not pdf_urls:
+        return None
 
     for attempt in range(1, retries + 1):
-        try:
-            print(f"📥 Attempt {attempt} to fetch PDF from {pdf_url}...")
-            response = await asyncio.to_thread(requests.get, pdf_url, timeout=60, verify=False)
-            response.raise_for_status()
+        for variant_index, pdf_url in enumerate(pdf_urls, start=1):
+            try:
+                print(f"📥 Attempt {attempt}.{variant_index} to fetch PDF from {pdf_url}...")
+                response = await asyncio.to_thread(requests.get, pdf_url, timeout=60, verify=False)
+                response.raise_for_status()
 
-            pdf_document = fitz.open(stream=response.content, filetype="pdf")
-            image_bytes_list: List[bytes] = []
-            for page_num in range(len(pdf_document)):
-                page = pdf_document.load_page(page_num)
-                pix = page.get_pixmap()
-                image_bytes_list.append(pix.tobytes("png"))
+                pdf_document = fitz.open(stream=response.content, filetype="pdf")
+                image_bytes_list: List[bytes] = []
+                for page_num in range(len(pdf_document)):
+                    page = pdf_document.load_page(page_num)
+                    pix = page.get_pixmap()
+                    image_bytes_list.append(pix.tobytes("png"))
 
-            if not image_bytes_list:
-                print("❌ The PDF was empty or could not be read.")
-                return None
+                if not image_bytes_list:
+                    print("❌ The PDF was empty or could not be read.")
+                    return None
 
-            await store_cached_images(cantina.key, target_date, image_bytes_list)
-            print("✅ PDF fetched, converted, and cached.")
-            return image_bytes_list, False
-        except Exception as e:
-            print(f"❌ Attempt {attempt} failed: {e}")
-            if attempt < retries:
-                print(f"⏳ Waiting {delay}s before retrying...")
-                await asyncio.sleep(delay)
+                await store_cached_images(cantina.key, target_date, image_bytes_list)
+                print("✅ PDF fetched, converted, and cached.")
+                return image_bytes_list, False
+            except Exception as e:
+                print(f"❌ Attempt {attempt}.{variant_index} failed: {e}")
+        if attempt < retries:
+            print(f"⏳ Waiting {delay}s before retrying...")
+            await asyncio.sleep(delay)
     print("❌ All attempts failed. Could not fetch PDF.")
     return None
 
