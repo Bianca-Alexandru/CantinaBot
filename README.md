@@ -59,6 +59,10 @@ git push -u origin main
 6. Ensure the service is marked as a **Worker** (not a web service). Railway will honour the `Procfile` and run `python CantinaBot.py`.
 7. Deploy the latest commit. The bot should come online once Railway finishes building the image. Check the **Logs** tab for confirmation that the bot connected to Discord successfully.
 
+### Time zone
+
+All scheduling logic runs in the Europe/Bucharest time zone, so the daily post happens at 11:30 Romanian time (EET/EEST) no matter where the bot is hosted.
+
 ### Updating the Deployment
 
 Push new commits to the `main` branch (or the branch configured in Railway). Railway will rebuild and redeploy automatically. You can also trigger redeploys from the dashboard.

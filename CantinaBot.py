@@ -7,6 +7,7 @@ import asyncio
 from io import BytesIO
 import fitz  # PyMuPDF
 import urllib3
+from zoneinfo import ZoneInfo
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
@@ -37,6 +38,8 @@ except ValueError as exc:
     raise RuntimeError(
         "Invalid DISCORD_CHANNEL_ID value. It must be an integer."
     ) from exc
+ROMANIA_TZ = ZoneInfo("Europe/Bucharest")
+
 RETRY_DELAY = timedelta(minutes=5)
 OPEN_TIME = time(hour=11, minute=30)
 DEFAULT_CLOSE_TIME = time(hour=14, minute=45)
@@ -253,8 +256,15 @@ async def send_menu(
         return False, None
 
 # ========== Scheduling ==========
+def _to_romania(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=ROMANIA_TZ)
+    return dt.astimezone(ROMANIA_TZ)
+
+
 def _move_to_auto_time(reference: datetime) -> datetime:
-    return reference.replace(
+    romania_ref = _to_romania(reference)
+    return romania_ref.replace(
         hour=OPEN_TIME.hour,
         minute=OPEN_TIME.minute,
         second=0,
@@ -262,24 +272,25 @@ def _move_to_auto_time(reference: datetime) -> datetime:
     )
 
 def _align_to_weekday(target: datetime) -> datetime:
+    target = _to_romania(target)
     while target.weekday() >= 5:  # 5=Saturday, 6=Sunday
         target += timedelta(days=1)
     return target
 
 def get_initial_auto_post_time(reference: datetime | None = None) -> datetime:
-    reference = reference or datetime.now()
+    reference = _to_romania(reference) if reference is not None else datetime.now(ROMANIA_TZ)
     target = _move_to_auto_time(reference)
     if target <= reference:
         target = _move_to_auto_time(reference + timedelta(days=1))
     return _align_to_weekday(target)
 
 def get_next_day_auto_post_time(reference: datetime | None = None) -> datetime:
-    reference = reference or datetime.now()
+    reference = _to_romania(reference) if reference is not None else datetime.now(ROMANIA_TZ)
     target = _move_to_auto_time(reference + timedelta(days=1))
     return _align_to_weekday(target)
 
 def get_retry_auto_post_time(reference: datetime | None = None) -> datetime:
-    reference = reference or datetime.now()
+    reference = _to_romania(reference) if reference is not None else datetime.now(ROMANIA_TZ)
     candidate = reference + RETRY_DELAY
     if candidate.weekday() >= 5:
         return get_next_day_auto_post_time(candidate)
@@ -287,9 +298,10 @@ def get_retry_auto_post_time(reference: datetime | None = None) -> datetime:
 
 async def set_next_auto_post(target: datetime, reason: str):
     global next_auto_post_at
+    target = _to_romania(target)
     async with auto_schedule_lock:
         next_auto_post_at = target
-    print(f"{reason} Next auto menu attempt at {target:%Y-%m-%d %H:%M}.")
+    print(f"{reason} Next auto menu attempt at {target:%Y-%m-%d %H:%M} Romania time.")
 
 
 def build_candidate_dates(today: date, include_today: bool, max_entries: int = 5) -> List[date]:
@@ -317,6 +329,7 @@ def build_candidate_dates(today: date, include_today: bool, max_entries: int = 5
 
 
 def determine_command_scenario(cantina: CantinaConfig, now: datetime) -> Tuple[str, List[date]]:
+    now = _to_romania(now)
     today = now.date()
     weekday = today.weekday()
 
@@ -390,7 +403,8 @@ async def auto_post_loop():
                 next_auto_post_at = target
             else:
                 next_attempt = next_auto_post_at
-        now = datetime.now()
+        now = datetime.now(ROMANIA_TZ)
+        next_attempt = _to_romania(next_attempt)
         delay = (next_attempt - now).total_seconds()
         if delay > 0:
             await asyncio.sleep(min(delay, 60))
@@ -434,7 +448,7 @@ async def auto_post_loop():
 
 async def handle_menu_interaction(interaction: discord.Interaction, cantina_key: str):
     cantina = CANTINAS[cantina_key]
-    now = datetime.now()
+    now = datetime.now(ROMANIA_TZ)
     scenario, candidate_dates = determine_command_scenario(cantina, now)
 
     success, posted_date = await send_menu(
