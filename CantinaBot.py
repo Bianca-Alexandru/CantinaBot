@@ -535,9 +535,13 @@ async def ping(ctx):
 async def hello_world(interaction: discord.Interaction):
     await interaction.response.send_message("Hello, world!")
 
+@bot.tree.command(name="insult", description="why would you use this :<")
+async def insult(interaction: discord.Interaction):
+    await interaction.response.send_message("sowwyyy /ᐠ ◞ ᆺ ◟マ \n https://tenor.com/view/phainon-noni-itayuwuji-phainon-honkaistarrail-phainon-chibi-cry-gif-14390704413906512030")
+
 @bot.tree.command(name="praise", description="Good job cantina-chan!")
 async def praise(interaction: discord.Interaction):
-    await interaction.response.send_message("yayyy thank you >w< :3c")
+    await interaction.response.send_message("yayyy thank you >w< :3c\n https://tenor.com/view/noni-itayuwuji-phainon-dance-honkaistarrail-phainon-chibi-gif-318861480241854034")
 
 @bot.tree.command(name="meniu", description="Post today’s Gaudeamus menu")
 async def meniu(interaction: discord.Interaction):
