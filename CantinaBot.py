@@ -1,4 +1,6 @@
+import logging
 import os
+import random
 
 import discord
 from discord.ext import commands
@@ -12,6 +14,9 @@ from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
 from typing import Callable, List, Optional, Sequence, Tuple
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("cantina_bot")
 
 # Suppress InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -46,6 +51,87 @@ DEFAULT_CLOSE_TIME = time(hour=14, minute=45)
 TITU_CLOSE_TIME = time(hour=18, minute=45)
 
 BASE_PDF_URL = "https://www.uaic.ro/wp-content/uploads"
+
+PRAISE_GIF_URL = "https://tenor.com/view/noni-itayuwuji-phainon-dance-honkaistarrail-phainon-chibi-gif-318861480241854034"
+INSULT_GIF_URL = "https://tenor.com/view/phainon-noni-itayuwuji-phainon-honkaistarrail-phainon-chibi-cry-gif-14390704413906512030"
+WISE_WORDS_GIF_URL = "https://tenor.com/view/phainon-kitty-cute-dance-cat-gif-7410832384021952970"
+
+PRAISE_RESPONSES = [
+    "yayyy thank you >w< :3c",
+    "yippiee yippiee yippiee ฅ^•ﻌ•^ฅ",
+    "aww you're too nice /ᐠ ˵> ⩊ <˵マ",
+    "hehe thamks ≽(•⩊ •マ≼",
+]
+
+INSULT_RESPONSES = [
+    "sowwyyy /ᐠ ◞ ᆺ ◟マ",
+    "oh so that's how it is /ᐠ - ˕ -マ ᶻ 𝗓 𐰁",
+    "i'm trying my best /ᐠ ･᷄ ︵ ･᷅マ",
+    "i-i'll do better /ᐠ •̥ ﻌ •̥ ᐟマ",
+    "FRICK YOU"
+]
+
+WISE_SAYINGS = [
+    "You cannot change what you refuse to confront.",
+    "Sometimes good things fall apart so better things can fall together.",
+    "Don’t think of cost.  Think of value.",
+    "No matter how many mistakes you make or how slow you progress, you are still way ahead of everyone who isn’t trying.",
+    "The only way to do great work is to love what you do.",
+    "Success is not final, failure is not fatal: It is the courage to continue that counts.",
+    "Making one person smile can change the world – maybe not the whole world, but their world.",
+    "The fool doth think he is wise, but the wise man knows himself to be a fool.",
+    "Even a broken clock is right twice a day.",
+    "A journey of a thousand miles begins with a single step.",
+    "Even a humble soup can warm the coldest evening.",
+    "A shared meal tastes twice as good.",
+    "It is better to remain silent at the risk of being thought a fool, than to talk and remove all doubt of it.",
+    "Patience is the secret ingredient in every great stew.",
+    "The only true wisdom is in knowing you know nothing.",
+    "Count your age by friends, not years. Count your life by smiles, not tears.",
+    "May you live every day of your life.",
+    "meow meow meow meow",
+    "lucky message!",
+    "Any fool can know. The point is to understand.",
+    "The secret of life, though, is to fall seven times and to get up eight times.",
+    "The unexamined life is not worth living.",
+    "Yesterday I was clever, so I wanted to change the world. Today I am wise, so I am changing myself",
+    "The best way out is always through.",
+    "Happiness depends upon ourselves.",
+    "We are what we repeatedly do. Excellence, then, is not an act, but a habit.",
+    "The mind is everything. What you think you become.",
+    "yea!",
+    "frick you",
+    "Let no man pull you so low as to hate him.",
+    "Do what you can, with what you have, where you are.",
+    "You miss 100% of the shots you don’t take.",
+    "The greatest wealth is to live content with little.",
+    "The best way to predict the future is to create it.",
+    "please help me theyre keeping me captive in this discord bot /ᐠ •̥ ﻌ •̥ ᐟマ",
+    "i am suffering /ᐠ •̥ ﻌ •̥ ᐟマ",
+    "The root of suffering is attachment.",
+    "Happiness is not something ready made. It comes from your own actions.",
+    "In the middle of difficulty lies opportunity.",
+    "Life is really simple, but we insist on making it complicated.",
+    "The only limit to our realization of tomorrow will be our doubts of today.",
+    "Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.",
+    "The best revenge is massive success.",
+    "The only thing necessary for the triumph of evil is for good men to do nothing."
+    "Early to bed and early to rise makes a man healthy, wealthy, and wise.",
+    "An unexamined life is not worth living.",
+    "To be yourself in a world that is constantly trying to make you something else is the greatest accomplishment.",
+    "If you tell the truth, you don't have to remember anything.",
+    "We accept the love we think we deserve.",
+    "It is better to be hated for what you are than to be loved for what you are not.",
+    "I have not failed. I've just found 10,000 ways that won't work.",
+    "Be the change that you wish to see in the world.",
+    "In three words I can sum up everything I've learned about life: it goes on.",
+    "Live as if you were to die tomorrow. Learn as if you were to live forever.",
+    "That which does not kill us makes us stronger.",
+    "The journey of a thousand miles begins with one step.",
+    "You must be the change you wish to see in the world.",
+    "What we think, we become.",
+    "All that we are is the result of what we have thought."
+]
 
 
 @dataclass(frozen=True)
@@ -130,6 +216,7 @@ auto_schedule_lock = asyncio.Lock()
 next_auto_post_at: Optional[datetime] = None
 auto_post_task: Optional[asyncio.Task] = None
 last_channel_id = CHANNEL_ID
+_scheduler_started = False
 
 
 def make_cache_key(cantina_key: str, target_date: date) -> str:
@@ -288,6 +375,13 @@ def _to_romania(dt: datetime) -> datetime:
     return dt.astimezone(ROMANIA_TZ)
 
 
+def _format_schedule(dt: Optional[datetime]) -> str:
+    if dt is None:
+        return "unscheduled"
+    romania_dt = _to_romania(dt)
+    return romania_dt.strftime("%Y-%m-%d %H:%M %Z")
+
+
 def _move_to_auto_time(reference: datetime) -> datetime:
     romania_ref = _to_romania(reference)
     return romania_ref.replace(
@@ -327,7 +421,9 @@ async def set_next_auto_post(target: datetime, reason: str):
     target = _to_romania(target)
     async with auto_schedule_lock:
         next_auto_post_at = target
-    print(f"{reason} Next auto menu attempt at {target:%Y-%m-%d %H:%M} Romania time.")
+    message = f"{reason} Next auto menu attempt at {target:%Y-%m-%d %H:%M} Romania time."
+    logger.info(message)
+    print(message)
 
 
 def build_candidate_dates(today: date, include_today: bool, max_entries: int = 5) -> List[date]:
@@ -418,58 +514,87 @@ def build_menu_message(
         return f"Here’s today’s {cantina.display_name} menu{cache_note}:"
     return f"Here’s the most recent {cantina.display_name} menu from {actual_str}{cache_note}:"
 
+
+def build_gif_embed(message: str, gif_url: str) -> discord.Embed:
+    embed = discord.Embed(description=message, color=discord.Color.random())
+    embed.set_image(url=gif_url)
+    return embed
+
 # ========== Auto-post Loop ==========
 async def auto_post_loop():
     await bot.wait_until_ready()
+    logger.info("Auto-post loop initialised. Current schedule: %s", _format_schedule(next_auto_post_at))
     while not bot.is_closed():
-        async with auto_schedule_lock:
-            if next_auto_post_at is None:
-                target = get_initial_auto_post_time()
-                next_attempt = target
-                next_auto_post_at = target
-            else:
-                next_attempt = next_auto_post_at
-        now = datetime.now(ROMANIA_TZ)
-        next_attempt = _to_romania(next_attempt)
-        delay = (next_attempt - now).total_seconds()
-        if delay > 0:
-            await asyncio.sleep(min(delay, 60))
-            continue
+        try:
+            async with auto_schedule_lock:
+                if next_auto_post_at is None:
+                    next_attempt = get_initial_auto_post_time()
+                    next_auto_post_at = next_attempt
+                else:
+                    next_attempt = next_auto_post_at
 
-        channel = bot.get_channel(last_channel_id) or bot.get_channel(CHANNEL_ID)
-        success = False
-        cantina = CANTINAS[DEFAULT_CANTINA_KEY]
-        target_date = next_attempt.date()
-        candidate_dates = [target_date]
+            now = datetime.now(ROMANIA_TZ)
+            next_attempt = _to_romania(next_attempt)
+            delay = (next_attempt - now).total_seconds()
 
-        if channel:
-            success, _ = await send_menu(
-                cantina,
-                channel,
-                channel.send,
-                candidate_dates,
-                lambda actual_date, from_cache: build_menu_message(
+            if delay > 0:
+                sleep_for = min(delay, 60)
+                await asyncio.sleep(sleep_for)
+                continue
+
+            logger.info("Triggering scheduled menu fetch for %s", _format_schedule(next_attempt))
+
+            channel = bot.get_channel(last_channel_id) or bot.get_channel(CHANNEL_ID)
+            if channel is None and last_channel_id:
+                try:
+                    channel = await bot.fetch_channel(last_channel_id)
+                except Exception as exc:
+                    logger.error("Failed to fetch channel %s: %s", last_channel_id, exc)
+                    channel = None
+
+            cantina = CANTINAS[DEFAULT_CANTINA_KEY]
+            target_date = next_attempt.date()
+            candidate_dates = [target_date]
+
+            if channel:
+                success, _ = await send_menu(
                     cantina,
-                    "auto",
-                    actual_date,
-                    target_date,
-                    from_cache,
-                ),
-                failure_message=(
-                    f"❌ Sorry, I couldn't fetch the {cantina.display_name} menu right now. Please try again later."
-                ),
-            )
-        else:
-            print("❌ Scheduled post skipped: channel not found.")
+                    channel,
+                    channel.send,
+                    candidate_dates,
+                    lambda actual_date, from_cache: build_menu_message(
+                        cantina,
+                        "auto",
+                        actual_date,
+                        target_date,
+                        from_cache,
+                    ),
+                    failure_message=(
+                        f"❌ Sorry, I couldn't fetch the {cantina.display_name} menu right now. Please try again later."
+                    ),
+                )
+            else:
+                success = False
+                logger.error("Scheduled post skipped: channel not found (id=%s).", last_channel_id)
 
-        if success:
-            next_target = get_next_day_auto_post_time(next_attempt)
-            await set_next_auto_post(next_target, "✅ Menu posted automatically.")
-        else:
-            next_target = get_retry_auto_post_time(next_attempt)
-            await set_next_auto_post(next_target, "🔁 Menu unavailable; retry scheduled.")
+            if success:
+                await set_next_auto_post(
+                    get_next_day_auto_post_time(next_attempt),
+                    "✅ Menu posted automatically.",
+                )
+            else:
+                await set_next_auto_post(
+                    get_retry_auto_post_time(now),
+                    "🔁 Menu unavailable; retry scheduled.",
+                )
 
-        await asyncio.sleep(1)
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Auto-post loop cancelled; exiting.")
+            raise
+        except Exception:
+            logger.exception("Unexpected error inside auto-post loop.")
+            await asyncio.sleep(60)
 
 
 async def handle_menu_interaction(interaction: discord.Interaction, cantina_key: str):
@@ -503,7 +628,7 @@ async def handle_menu_interaction(interaction: discord.Interaction, cantina_key:
 # ========== Bot Events ==========
 @bot.event
 async def on_ready():
-    global auto_post_task
+    global auto_post_task, _scheduler_started
     print(f"✅ Logged in as {bot.user}")
 
     async with auto_schedule_lock:
@@ -512,14 +637,26 @@ async def on_ready():
     if needs_initial_schedule:
         await set_next_auto_post(get_initial_auto_post_time(), "🕒 Auto menu timer initialised.")
 
-    if auto_post_task is None or auto_post_task.done():
+    if not _scheduler_started or auto_post_task is None or auto_post_task.done():
         auto_post_task = bot.loop.create_task(auto_post_loop())
+        _scheduler_started = True
+        logger.info("Auto-post scheduler task started from on_ready.")
+    else:
+        logger.info("Auto-post scheduler already running.")
 
     try:
         synced = await bot.tree.sync()  # sync slash commands
         print(f"✅ Synced {len(synced)} slash commands.")
     except Exception as e:
         print(f"❌ Error syncing commands: {e}")
+
+
+@bot.event
+async def on_resumed():
+    logger.info(
+        "Gateway session resumed. Next auto menu attempt remains at %s.",
+        _format_schedule(next_auto_post_at),
+    )
 
 # ========== Prefix Commands ==========
 @bot.command()
@@ -537,11 +674,22 @@ async def hello_world(interaction: discord.Interaction):
 
 @bot.tree.command(name="insult", description="why would you use this :<")
 async def insult(interaction: discord.Interaction):
-    await interaction.response.send_message("sowwyyy /ᐠ ◞ ᆺ ◟マ \n https://tenor.com/view/phainon-noni-itayuwuji-phainon-honkaistarrail-phainon-chibi-cry-gif-14390704413906512030")
+    message = random.choice(INSULT_RESPONSES)
+    embed = build_gif_embed(message, INSULT_GIF_URL)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="praise", description="Good job cantina-chan!")
 async def praise(interaction: discord.Interaction):
-    await interaction.response.send_message("yayyy thank you >w< :3c\n https://tenor.com/view/noni-itayuwuji-phainon-dance-honkaistarrail-phainon-chibi-gif-318861480241854034")
+    message = random.choice(PRAISE_RESPONSES)
+    embed = build_gif_embed(message, PRAISE_GIF_URL)
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="wise-words", description="Share a bit of cantina wisdom")
+async def wise_words(interaction: discord.Interaction):
+    message = random.choice(WISE_SAYINGS)
+    embed = build_gif_embed(message, WISE_WORDS_GIF_URL)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="meniu", description="Post today’s Gaudeamus menu")
 async def meniu(interaction: discord.Interaction):
