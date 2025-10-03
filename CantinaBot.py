@@ -515,10 +515,29 @@ def build_menu_message(
     return f"Here’s the most recent {cantina.display_name} menu from {actual_str}{cache_note}:"
 
 
-def build_gif_embed(message: str, gif_url: str) -> discord.Embed:
+async def send_gif_response(
+    interaction: discord.Interaction,
+    message: str,
+    gif_url: str,
+    *,
+    defer_if_needed: bool = False,
+):
     embed = discord.Embed(description=message, color=discord.Color.random())
     embed.set_image(url=gif_url)
-    return embed
+    try:
+        if defer_if_needed and not interaction.response.is_done():
+            await interaction.response.defer()
+        if interaction.response.is_done():
+            await interaction.followup.send(gif_url, embed=embed)
+        else:
+            await interaction.response.send_message(gif_url, embed=embed)
+    except (discord.HTTPException, discord.InteractionResponded) as exc:
+        logger.warning("Falling back to link for GIF %s: %s", gif_url, exc)
+        fallback_content = f"{message}\n{gif_url}"
+        if interaction.response.is_done():
+            await interaction.followup.send(fallback_content)
+        else:
+            await interaction.response.send_message(fallback_content)
 
 # ========== Auto-post Loop ==========
 async def auto_post_loop():
@@ -675,21 +694,18 @@ async def hello_world(interaction: discord.Interaction):
 @bot.tree.command(name="insult", description="why would you use this :<")
 async def insult(interaction: discord.Interaction):
     message = random.choice(INSULT_RESPONSES)
-    embed = build_gif_embed(message, INSULT_GIF_URL)
-    await interaction.response.send_message(embed=embed)
+    await send_gif_response(interaction, message, INSULT_GIF_URL)
 
 @bot.tree.command(name="praise", description="Good job cantina-chan!")
 async def praise(interaction: discord.Interaction):
     message = random.choice(PRAISE_RESPONSES)
-    embed = build_gif_embed(message, PRAISE_GIF_URL)
-    await interaction.response.send_message(embed=embed)
+    await send_gif_response(interaction, message, PRAISE_GIF_URL)
 
 
 @bot.tree.command(name="wise-words", description="Share a bit of cantina wisdom")
 async def wise_words(interaction: discord.Interaction):
     message = random.choice(WISE_SAYINGS)
-    embed = build_gif_embed(message, WISE_WORDS_GIF_URL)
-    await interaction.response.send_message(embed=embed)
+    await send_gif_response(interaction, message, WISE_WORDS_GIF_URL)
 
 @bot.tree.command(name="meniu", description="Post today’s Gaudeamus menu")
 async def meniu(interaction: discord.Interaction):
