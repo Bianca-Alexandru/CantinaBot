@@ -522,22 +522,20 @@ async def send_gif_response(
     *,
     defer_if_needed: bool = False,
 ):
-    embed = discord.Embed(description=message, color=discord.Color.random())
-    embed.set_image(url=gif_url)
+    content = f"{message}\n{gif_url}"
     try:
         if defer_if_needed and not interaction.response.is_done():
             await interaction.response.defer()
         if interaction.response.is_done():
-            await interaction.followup.send(gif_url, embed=embed)
+            await interaction.followup.send(content)
         else:
-            await interaction.response.send_message(gif_url, embed=embed)
+            await interaction.response.send_message(content)
     except (discord.HTTPException, discord.InteractionResponded) as exc:
-        logger.warning("Falling back to link for GIF %s: %s", gif_url, exc)
-        fallback_content = f"{message}\n{gif_url}"
+        logger.warning("Failed to send GIF response, retrying as follow-up: %s", exc)
         if interaction.response.is_done():
-            await interaction.followup.send(fallback_content)
+            await interaction.followup.send(content)
         else:
-            await interaction.response.send_message(fallback_content)
+            await interaction.response.send_message(content)
 
 # ========== Auto-post Loop ==========
 async def auto_post_loop():
